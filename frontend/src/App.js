@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Login from '@/pages/Login';
 import Dashboard from '@/pages/Dashboard';
 import Pisos from '@/pages/Pisos';
+import Habitaciones from '@/pages/Habitaciones';
 import Inquilinos from '@/pages/Inquilinos';
 import Contratos from '@/pages/Contratos';
 import Pagos from '@/pages/Pagos';
@@ -25,6 +26,7 @@ function App() {
             <Route index element={<Navigate to="/dashboard" replace />} />
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="pisos" element={<Pisos />} />
+            <Route path="habitaciones" element={<Habitaciones />} />
             <Route path="inquilinos" element={<Inquilinos />} />
             <Route path="contratos" element={<Contratos />} />
             <Route path="pagos" element={<Pagos />} />
