@@ -25,13 +25,18 @@ const Contratos = () => {
   const [dialogAbierto, setDialogAbierto] = useState(false);
   const [dialogDetalle, setDialogDetalle] = useState(false);
   const [contratoSeleccionado, setContratoSeleccionado] = useState(null);
+  const [contratoEditar, setContratoEditar] = useState(null);
   const [cargando, setCargando] = useState(false);
+  const [cargandoPisos, setCargandoPisos] = useState(false);
+  const [cargandoHabitaciones, setCargandoHabitaciones] = useState(false);
+  const [cargandoInquilinos, setCargandoInquilinos] = useState(false);
   
   const [filtros, setFiltros] = useState({
     estado: 'all'
   });
 
   const [formData, setFormData] = useState({
+    piso_id: '',
     habitacion_id: '',
     inquilino_id: '',
     fecha_inicio: '',
@@ -39,7 +44,10 @@ const Contratos = () => {
     renta_mensual: '',
     fianza: '',
     gastos_mensuales_tarifa: '50',
-    tiene_limpieza: false
+    tiene_limpieza: false,
+    importe_limpieza_mensual: '',
+    dia_pago: '1',
+    estado: 'activo'
   });
 
   useEffect(() => {
@@ -48,6 +56,9 @@ const Contratos = () => {
 
   const cargarDatos = async () => {
     try {
+      setCargandoPisos(true);
+      setCargandoHabitaciones(true);
+      setCargandoInquilinos(true);
       const [pisosRes, habitacionesRes, inquilinosRes] = await Promise.all([
         axios.get(`${API}/pisos`),
         axios.get(`${API}/habitaciones`),
@@ -61,6 +72,10 @@ const Contratos = () => {
       await cargarContratos();
     } catch (error) {
       toast.error('Error al cargar datos');
+    } finally {
+      setCargandoPisos(false);
+      setCargandoHabitaciones(false);
+      setCargandoInquilinos(false);
     }
   };
 
@@ -82,22 +97,64 @@ const Contratos = () => {
     setCargando(true);
 
     try {
+      if (!formData.piso_id) {
+        toast.error('Selecciona un piso');
+        return;
+      }
+      if (!formData.habitacion_id) {
+        toast.error('Selecciona una habitación');
+        return;
+      }
+      if (!formData.inquilino_id) {
+        toast.error('Selecciona un inquilino');
+        return;
+      }
+      if (!formData.fecha_inicio || !formData.fecha_fin) {
+        toast.error('Completa las fechas del contrato');
+        return;
+      }
+      if (!formData.renta_mensual || !formData.fianza || !formData.gastos_mensuales_tarifa) {
+        toast.error('Completa renta, fianza y gastos mensuales');
+        return;
+      }
+      if (formData.tiene_limpieza && !formData.importe_limpieza_mensual) {
+        toast.error('Indica la cantidad de limpieza mensual');
+        return;
+      }
+      if (formData.tiene_limpieza && parseFloat(formData.importe_limpieza_mensual) <= 0) {
+        toast.error('La cantidad de limpieza mensual debe ser mayor que 0');
+        return;
+      }
+      if (!formData.dia_pago || parseInt(formData.dia_pago, 10) < 1 || parseInt(formData.dia_pago, 10) > 31) {
+        toast.error('Indica un día de pago válido (1-31)');
+        return;
+      }
+      const { piso_id, ...restForm } = formData;
       const datos = {
-        ...formData,
-        fecha_inicio: new Date(formData.fecha_inicio).toISOString(),
-        fecha_fin: new Date(formData.fecha_fin).toISOString(),
-        renta_mensual: parseFloat(formData.renta_mensual),
-        fianza: parseFloat(formData.fianza),
-        gastos_mensuales_tarifa: parseFloat(formData.gastos_mensuales_tarifa)
+        ...restForm,
+        fecha_inicio: new Date(restForm.fecha_inicio).toISOString(),
+        fecha_fin: new Date(restForm.fecha_fin).toISOString(),
+        renta_mensual: parseFloat(restForm.renta_mensual),
+        fianza: parseFloat(restForm.fianza),
+        gastos_mensuales_tarifa: parseFloat(restForm.gastos_mensuales_tarifa),
+        importe_limpieza_mensual: restForm.tiene_limpieza
+          ? parseFloat(restForm.importe_limpieza_mensual)
+          : null,
+        dia_pago: parseInt(restForm.dia_pago, 10)
       };
 
-      await axios.post(`${API}/contratos`, datos);
-      toast.success('Contrato creado correctamente');
+      if (contratoEditar) {
+        await axios.put(`${API}/contratos/${contratoEditar._id}`, datos);
+        toast.success('Contrato actualizado correctamente');
+      } else {
+        await axios.post(`${API}/contratos`, datos);
+        toast.success('Contrato creado correctamente');
+      }
       
       cargarContratos();
       cerrarDialog();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Error al crear contrato');
+      toast.error(error.response?.data?.detail || 'Error al guardar contrato');
     } finally {
       setCargando(false);
     }
@@ -105,6 +162,7 @@ const Contratos = () => {
 
   const abrirDialog = () => {
     setFormData({
+      piso_id: '',
       habitacion_id: '',
       inquilino_id: '',
       fecha_inicio: '',
@@ -112,13 +170,18 @@ const Contratos = () => {
       renta_mensual: '',
       fianza: '',
       gastos_mensuales_tarifa: '50',
-      tiene_limpieza: false
+      tiene_limpieza: false,
+      importe_limpieza_mensual: '',
+      dia_pago: '1',
+      estado: 'activo'
     });
+    setContratoEditar(null);
     setDialogAbierto(true);
   };
 
   const cerrarDialog = () => {
     setDialogAbierto(false);
+    setContratoEditar(null);
   };
 
   const verDetalle = (contrato) => {
@@ -126,19 +189,54 @@ const Contratos = () => {
     setDialogDetalle(true);
   };
 
+  const abrirEditar = (contrato) => {
+    const habitacion = habitaciones.find((hab) => hab._id === contrato.habitacion_id);
+    setContratoEditar(contrato);
+    setFormData({
+      piso_id: habitacion?.piso_id || '',
+      habitacion_id: contrato.habitacion_id,
+      inquilino_id: contrato.inquilino_id,
+      fecha_inicio: contrato.fecha_inicio ? contrato.fecha_inicio.slice(0, 10) : '',
+      fecha_fin: contrato.fecha_fin ? contrato.fecha_fin.slice(0, 10) : '',
+      renta_mensual: contrato.renta_mensual?.toString() || '',
+      fianza: contrato.fianza?.toString() || '',
+      gastos_mensuales_tarifa: contrato.gastos_mensuales_tarifa?.toString() || '50',
+      tiene_limpieza: contrato.tiene_limpieza || false,
+      importe_limpieza_mensual: contrato.importe_limpieza_mensual?.toString() || '',
+      dia_pago: contrato.dia_pago?.toString() || '1',
+      estado: contrato.estado || 'activo'
+    });
+    setDialogAbierto(true);
+  };
+
+  const eliminarContrato = async (contrato) => {
+    if (!window.confirm('¿Estás seguro de eliminar este contrato?')) return;
+    try {
+      await axios.delete(`${API}/contratos/${contrato._id}`);
+      toast.success('Contrato eliminado correctamente');
+      cargarContratos();
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Error al eliminar contrato');
+    }
+  };
+
   const obtenerNombreHabitacion = (habitacionId) => {
-    const habitacion = habitaciones.find(h => h.id === habitacionId);
+    const habitacion = habitaciones.find(h => h._id === habitacionId);
     if (!habitacion) return 'N/A';
-    const piso = pisos.find(p => p.id === habitacion.piso_id);
+    const piso = pisos.find(p => p._id === habitacion.piso_id);
     return `${piso?.nombre || 'N/A'} - ${habitacion.nombre}`;
   };
 
   const obtenerNombreInquilino = (inquilinoId) => {
-    const inquilino = inquilinos.find(i => i.id === inquilinoId);
+    const inquilino = inquilinos.find(i => i._id === inquilinoId);
     return inquilino?.nombre || 'N/A';
   };
 
   const puedeCrear = usuario?.rol === 'admin' || usuario?.rol === 'supervisor';
+  const puedeEditar = usuario?.rol === 'admin' || usuario?.rol === 'supervisor';
+  const habitacionesFiltradas = formData.piso_id
+    ? habitaciones.filter((hab) => hab.piso_id === formData.piso_id)
+    : [];
 
   return (
     <div data-testid="contratos-page">
@@ -154,29 +252,67 @@ const Contratos = () => {
             </DialogTrigger>
             <DialogContent className="max-w-2xl">
               <DialogHeader>
-                <DialogTitle>Nuevo Contrato</DialogTitle>
+                <DialogTitle>{contratoEditar ? 'Editar Contrato' : 'Nuevo Contrato'}</DialogTitle>
               </DialogHeader>
               <form onSubmit={handleSubmit}>
                 <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <Label>Piso *</Label>
+                    <Select
+                      value={formData.piso_id}
+                      onValueChange={(value) =>
+                        setFormData({
+                          ...formData,
+                          piso_id: value,
+                          habitacion_id: ''
+                        })
+                      }
+                      required
+                      disabled={!!contratoEditar}
+                    >
+                      <SelectTrigger data-testid="piso-select">
+                        <SelectValue placeholder={cargandoPisos ? 'Cargando pisos...' : 'Selecciona un piso'} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {pisos.map((piso) => (
+                          <SelectItem key={piso._id} value={piso._id}>
+                            {piso.nombre}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <div className="col-span-2">
                     <Label>Habitación *</Label>
                     <Select
                       value={formData.habitacion_id}
                       onValueChange={(value) => setFormData({...formData, habitacion_id: value})}
                       required
+                      disabled={!formData.piso_id || !!contratoEditar}
                     >
                       <SelectTrigger data-testid="habitacion-select">
-                        <SelectValue placeholder="Selecciona una habitación" />
+                        <SelectValue
+                          placeholder={
+                            !formData.piso_id
+                              ? 'Selecciona un piso primero'
+                              : cargandoHabitaciones
+                                ? 'Cargando habitaciones...'
+                                : 'Selecciona una habitación'
+                          }
+                        />
                       </SelectTrigger>
                       <SelectContent>
-                        {habitaciones.map(hab => {
-                          const piso = pisos.find(p => p.id === hab.piso_id);
-                          return (
-                            <SelectItem key={hab.id} value={hab.id}>
-                              {piso?.nombre} - {hab.nombre} ({hab.precio_base}€)
+                        {habitacionesFiltradas.length === 0 ? (
+                          <SelectItem value="no-disponible" disabled>
+                            Este piso no tiene habitaciones disponibles
+                          </SelectItem>
+                        ) : (
+                          habitacionesFiltradas.map((hab) => (
+                            <SelectItem key={hab._id} value={hab._id}>
+                              {hab.nombre} ({hab.precio_base}€)
                             </SelectItem>
-                          );
-                        })}
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
@@ -186,13 +322,16 @@ const Contratos = () => {
                       value={formData.inquilino_id}
                       onValueChange={(value) => setFormData({...formData, inquilino_id: value})}
                       required
+                      disabled={!!contratoEditar}
                     >
                       <SelectTrigger data-testid="inquilino-select">
-                        <SelectValue placeholder="Selecciona un inquilino" />
+                        <SelectValue
+                          placeholder={cargandoInquilinos ? 'Cargando inquilinos...' : 'Selecciona un inquilino'}
+                        />
                       </SelectTrigger>
                       <SelectContent>
                         {inquilinos.filter(i => i.activo).map(inq => (
-                          <SelectItem key={inq.id} value={inq.id}>
+                          <SelectItem key={inq._id} value={inq._id}>
                             {inq.nombre} - {inq.dni}
                           </SelectItem>
                         ))}
@@ -256,17 +395,69 @@ const Contratos = () => {
                       required
                     />
                   </div>
-                  <div className="flex items-center gap-2 pt-6">
-                    <input
-                      type="checkbox"
-                      id="limpieza"
-                      checked={formData.tiene_limpieza}
-                      onChange={(e) => setFormData({...formData, tiene_limpieza: e.target.checked})}
-                      className="rounded"
+                  <div>
+                    <Label htmlFor="dia_pago">Día de pago mensual *</Label>
+                    <Input
+                      id="dia_pago"
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={formData.dia_pago}
+                      onChange={(e) => setFormData({...formData, dia_pago: e.target.value})}
+                      required
                     />
-                    <Label htmlFor="limpieza" className="cursor-pointer">
-                      Incluye limpieza
-                    </Label>
+                  </div>
+                  {contratoEditar && (
+                    <div>
+                      <Label>Estado *</Label>
+                      <Select
+                        value={formData.estado}
+                        onValueChange={(value) => setFormData({...formData, estado: value})}
+                        required
+                      >
+                        <SelectTrigger data-testid="estado-contrato-select">
+                          <SelectValue placeholder="Selecciona estado" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="activo">Activo</SelectItem>
+                          <SelectItem value="programado">Programado</SelectItem>
+                          <SelectItem value="finalizado">Finalizado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                  <div className="col-span-2 border-t pt-4">
+                    <Label className="block text-sm font-medium text-gray-900 mb-2">Limpieza mensual</Label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        id="limpieza"
+                        checked={formData.tiene_limpieza}
+                        onChange={(e) =>
+                          setFormData({
+                            ...formData,
+                            tiene_limpieza: e.target.checked,
+                            importe_limpieza_mensual: e.target.checked ? formData.importe_limpieza_mensual : ''
+                          })
+                        }
+                        className="rounded"
+                      />
+                      <Label htmlFor="limpieza" className="cursor-pointer">
+                        Incluye limpieza
+                      </Label>
+                    </div>
+                    <div className="mt-3">
+                      <Label htmlFor="importe_limpieza">Cantidad limpieza mensual (€) *</Label>
+                      <Input
+                        id="importe_limpieza"
+                        type="number"
+                        step="0.01"
+                        value={formData.importe_limpieza_mensual}
+                        onChange={(e) => setFormData({...formData, importe_limpieza_mensual: e.target.value})}
+                        disabled={!formData.tiene_limpieza}
+                        required={formData.tiene_limpieza}
+                      />
+                    </div>
                   </div>
                 </div>
                 <DialogFooter className="mt-6">
@@ -294,6 +485,7 @@ const Contratos = () => {
               <SelectContent>
                 <SelectItem value="all">Todos</SelectItem>
                 <SelectItem value="activo">Activos</SelectItem>
+                <SelectItem value="programado">Programados</SelectItem>
                 <SelectItem value="finalizado">Finalizados</SelectItem>
               </SelectContent>
             </Select>
@@ -327,28 +519,54 @@ const Contratos = () => {
                 </TableRow>
               ) : (
                 contratos.map((contrato) => (
-                  <TableRow key={contrato.id} data-testid={`contrato-row-${contrato.id}`}>
+                  <TableRow key={contrato._id} data-testid={`contrato-row-${contrato._id}`}>
                     <TableCell className="font-medium">{obtenerNombreInquilino(contrato.inquilino_id)}</TableCell>
                     <TableCell>{obtenerNombreHabitacion(contrato.habitacion_id)}</TableCell>
                     <TableCell>{format(new Date(contrato.fecha_inicio), 'dd/MM/yyyy', { locale: es })}</TableCell>
                     <TableCell>{format(new Date(contrato.fecha_fin), 'dd/MM/yyyy', { locale: es })}</TableCell>
                     <TableCell>{contrato.renta_mensual.toFixed(2)} €</TableCell>
                     <TableCell>
-                      {contrato.estado === 'activo' ? (
+                      {contrato.estado === 'activo' && (
                         <Badge className="bg-green-100 text-green-800">Activo</Badge>
-                      ) : (
+                      )}
+                      {contrato.estado === 'programado' && (
+                        <Badge className="bg-blue-100 text-blue-800">Programado</Badge>
+                      )}
+                      {contrato.estado === 'finalizado' && (
                         <Badge variant="secondary">Finalizado</Badge>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => verDetalle(contrato)}
-                        data-testid={`ver-contrato-${contrato.id}`}
-                      >
-                        <Eye size={16} />
-                      </Button>
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => verDetalle(contrato)}
+                          data-testid={`ver-contrato-${contrato._id}`}
+                        >
+                          <Eye size={16} />
+                        </Button>
+                        {puedeEditar && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => abrirEditar(contrato)}
+                            data-testid={`editar-contrato-${contrato._id}`}
+                          >
+                            Editar
+                          </Button>
+                        )}
+                        {puedeEditar && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => eliminarContrato(contrato)}
+                            data-testid={`eliminar-contrato-${contrato._id}`}
+                          >
+                            Eliminar
+                          </Button>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))
@@ -396,8 +614,20 @@ const Contratos = () => {
                   <p className="font-medium">{contratoSeleccionado.gastos_mensuales_tarifa.toFixed(2)} €</p>
                 </div>
                 <div>
+                  <Label className="text-gray-600">Día de Pago</Label>
+                  <p className="font-medium">Día {contratoSeleccionado.dia_pago}</p>
+                </div>
+                <div>
                   <Label className="text-gray-600">Estado</Label>
                   <p className="font-medium capitalize">{contratoSeleccionado.estado}</p>
+                </div>
+                <div>
+                  <Label className="text-gray-600">Limpieza mensual</Label>
+                  <p className="font-medium">
+                    {contratoSeleccionado.tiene_limpieza
+                      ? `${contratoSeleccionado.importe_limpieza_mensual?.toFixed(2) || '0.00'} €`
+                      : 'No incluye'}
+                  </p>
                 </div>
               </div>
             </div>

@@ -42,6 +42,7 @@ const Pisos = () => {
   const [formHabitacion, setFormHabitacion] = useState({
     piso_id: '',
     nombre: '',
+    metros: '',
     precio_base: ''
   });
 
@@ -198,12 +199,15 @@ const Pisos = () => {
 
   const abrirDialogHabitacion = (habitacion = null) => {
     if (habitacion) {
+      if (habitacion.metros == null || habitacion.precio_base == null) {
+        console.warn('Habitación incompleta', habitacion);
+      }
       setHabitacionEditar(habitacion);
       setFormHabitacion({
-        piso_id: habitacion.piso_id,
-        nombre: habitacion.nombre,
-        metros: habitacion.metros.toString(),
-        precio_base: habitacion.precio_base.toString()
+        piso_id: habitacion.piso_id ?? '',
+        nombre: habitacion.nombre ?? '',
+        metros: String(habitacion.metros ?? ''),
+        precio_base: String(habitacion.precio_base ?? '')
       });
     } else {
       setHabitacionEditar(null);
